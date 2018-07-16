@@ -6,6 +6,7 @@
 
 #if !FAKE
   #r "netstandard" // Temp fix for https://github.com/fsharp/FAKE/issues/1985
+  #r "Facades/netstandard" // https://github.com/ionide/ionide-vscode-fsharp/issues/839#issuecomment-396296095
 #endif
 
 open Fake.Core
