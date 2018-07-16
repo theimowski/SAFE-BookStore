@@ -21,14 +21,6 @@ open System.IO
 
 open SAFE.Build
 
-let ipAddress = "localhost"
-let port = 8080
-let serverPort = 8085
-
-let SAFE = SAFEBuild (fun x ->
-    { x with
-        JsDeps = Yarn
-    } )
 
 let project = "Suave/Fable sample"
 
@@ -57,6 +49,19 @@ let dockerUser = Environment.environVar "DockerUser"
 let dockerPassword = Environment.environVar "DockerPassword"
 let dockerLoginServer = Environment.environVar "DockerLoginServer"
 let dockerImageName = Environment.environVar "DockerImageName"
+
+
+let ipAddress = "localhost"
+let port = 8080
+let serverPort = 8085
+
+let SAFE = SAFEBuild (fun x ->
+    { x with
+        JsDeps = Yarn
+        Docker =
+            { DockerUser = "safe"
+              DockerImageName = "bookstore" }
+    } )
 
 // --------------------------------------------------------------------------------------
 // END TODO: The rest of the file includes standard build steps
@@ -132,7 +137,7 @@ Target.create "InstallDotNetCore" (fun _ ->
 // --------------------------------------------------------------------------------------
 // Build library & test project
 Target.create "BuildServer" (fun _ ->
-    runDotnet serverPath "build"
+    SAFE.BuildServer ()
 )
 
 Target.create "BuildClientTests" (fun _ ->
@@ -148,8 +153,7 @@ Target.create "InstallClient" (fun _ ->
 )
 
 Target.create "BuildClient" (fun _ ->
-    runDotnet clientPath "restore"
-    runDotnet clientPath "fable webpack --port free -- -p --mode production"
+    SAFE.BuildClient ()
 )
 
 Target.create "RunServerTests" (fun _ ->
@@ -251,42 +255,11 @@ Target.create "PrepareRelease" (fun _ ->
 )
 
 Target.create "BundleClient" (fun _ ->
-    let result =
-        Process.execSimple (fun info ->
-            { info with
-                FileName = dotnetExePath
-                WorkingDirectory = serverPath
-                Arguments = sprintf "publish -c Release -o \"%s\"" (Path.getFullName deployDir) }
-            ) TimeSpan.MaxValue
-    if result <> 0 then failwith "Publish failed"
-
-    let clientDir = deployDir </> "client"
-    let publicDir = clientDir </> "public"
-    let jsDir = clientDir </> "js"
-    let cssDir = clientDir </> "css"
-    let imageDir = clientDir </> "Images"
-
-    !! "src/Client/public/**/*.*" |> Shell.copyFiles publicDir
-    !! "src/Client/js/**/*.*" |> Shell.copyFiles jsDir
-    !! "src/Client/css/**/*.*" |> Shell.copyFiles cssDir
-    !! "src/Client/Images/**/*.*" |> Shell.copyFiles imageDir
-
-    "src/Client/index.html" |> Shell.copyFile clientDir
+    SAFE.Docker.Bundle ()
 )
 
 Target.create "CreateDockerImage" (fun _ ->
-    if String.IsNullOrEmpty dockerUser then
-        failwithf "docker username not given."
-    if String.IsNullOrEmpty dockerImageName then
-        failwithf "docker image Name not given."
-    let result =
-        Process.execSimple (fun info ->
-            { info with
-                FileName = "docker"
-                UseShellExecute = false
-                Arguments = sprintf "build -t %s/%s ." dockerUser dockerImageName }
-        ) TimeSpan.MaxValue
-    if result <> 0 then failwith "Docker build failed"
+    SAFE.Docker.Build ()
 )
 
 Target.create "TestDockerImage" (fun _ ->
