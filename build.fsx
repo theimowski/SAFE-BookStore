@@ -19,6 +19,17 @@ open Fake.Tools
 open System
 open System.IO
 
+open SAFE.Build
+
+let ipAddress = "localhost"
+let port = 8080
+let serverPort = 8085
+
+let SAFE = SAFEBuild (fun x ->
+    { x with
+        JsDeps = Yarn
+    } )
+
 let project = "Suave/Fable sample"
 
 let summary = "SAFE sample"
@@ -133,11 +144,7 @@ Target.create "BuildServerTests" (fun _ ->
 )
 
 Target.create "InstallClient" (fun _ ->
-    printfn "Node version:"
-    run nodeTool "--version" __SOURCE_DIRECTORY__
-    printfn "Yarn version:"
-    run yarnTool "--version" __SOURCE_DIRECTORY__
-    run yarnTool "install --frozen-lockfile" __SOURCE_DIRECTORY__
+    SAFE.RestoreClient ()
 )
 
 Target.create "BuildClient" (fun _ ->
@@ -171,9 +178,6 @@ Target.create "RunClientTests" (fun _ ->
 
 // --------------------------------------------------------------------------------------
 // Run the Website
-let ipAddress = "localhost"
-let port = 8080
-let serverPort = 8085
 
 Target.createFinal "KillProcess" (fun _ ->
     Process.killAllByName "dotnet"
@@ -181,28 +185,8 @@ Target.createFinal "KillProcess" (fun _ ->
 )
 
 Target.create "Run" (fun _ ->
-    runDotnet clientPath "restore"
-    runDotnet serverTestsPath "restore"
-
-    let unitTestsWatch = async {
-        let result =
-            Process.execSimple (fun info ->
-                { info with
-                    FileName = dotnetExePath
-                    WorkingDirectory = serverTestsPath
-                    Arguments = sprintf "watch msbuild /t:TestAndRun /p:DotNetHost=%s" dotnetExePath }
-            ) TimeSpan.MaxValue
-
-        if result <> 0 then failwith "Website shut down." }
-
-    let fablewatch = async { runDotnet clientPath "fable webpack-dev-server --port free -- --mode development" }
-    let openBrowser = async {
-        System.Threading.Thread.Sleep(5000)
-        Diagnostics.Process.Start("http://"+ ipAddress + sprintf ":%d" port) |> ignore }
-
-    Async.Parallel [| unitTestsWatch; fablewatch; openBrowser |]
-    |> Async.RunSynchronously
-    |> ignore
+    [ SAFE.RunServer; SAFE.RunClient; SAFE.RunBrowser ]
+    |> SAFE.RunInParallel
 )
 
 Target.create "RunSSR" (fun _ ->
